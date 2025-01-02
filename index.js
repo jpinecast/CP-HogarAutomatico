@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import imap from "imap-simple";
 import { simpleParser } from "mailparser";
 import fetch from "node-fetch";
-import puppeteer from "puppeteer";
+import { chromium } from "playwright"; // Cambiado a Playwright
 
 dotenv.config();
 
@@ -17,7 +17,7 @@ const imapConfig = {
   },
 };
 
-// Puppeteer navegador
+// Playwright navegador
 let browser = null;
 
 async function startMonitoring() {
@@ -27,8 +27,8 @@ async function startMonitoring() {
     await connection.openBox("INBOX");
     console.log("Conexión establecida y monitoreando correos.");
 
-    // Inicia Puppeteer
-    browser = await puppeteer.launch({ headless: true });
+    // Inicia Playwright
+    browser = await chromium.launch({ headless: true });
 
     // Verificar número de correos y eliminar si exceden el límite
     await checkAndCleanInbox(connection);
@@ -130,55 +130,33 @@ async function approveHomeUpdate(link) {
 }
 
 async function confirmHomeUpdate(link) {
-    console.log("Iniciando navegador para confirmar la actualización...");
-    const browser = await puppeteer.launch({ headless: true });
-    const page = await browser.newPage();
-  
-    try {
-      await page.goto(link, { waitUntil: "networkidle2" });
-      console.log("Página cargada. Verificando contenido...");
-  
-      // Buscar y manejar iframes, si existen
-      const iframeElement = await page.$('iframe');
-      let frame = page;
-  
-      if (iframeElement) {
-        console.log("Iframe detectado. Accediendo al contenido...");
-        frame = await iframeElement.contentFrame();
-        if (!frame) {
-          throw new Error("No se pudo acceder al contenido del iframe.");
-        }
-      }
-  
-      console.log("Buscando botón de confirmación...");
-      const buttonSelector = 'button[data-uia="set-primary-location-action"]';
-      await frame.waitForSelector(buttonSelector, { timeout: 60000 });
-      console.log("Botón encontrado. Haciendo clic para confirmar...");
-      await frame.click(buttonSelector);
-  
-      console.log("Esperando mensaje de confirmación...");
-      const successMessageSelector = 'div:contains("Actualizaste tu Hogar con Netflix")'; // Ajusta si es necesario
-      await page.waitForSelector(successMessageSelector, { timeout: 60000 });
-      console.log("Actualización confirmada. Mensaje de éxito encontrado.");
-  
-      // Captura de información adicional, si se requiere
-      const confirmationText = await page.evaluate(() => {
-        const element = document.querySelector('div:contains("Actualizaste tu Hogar con Netflix")');
-        return element ? element.textContent : "Mensaje no encontrado";
-      });
-      console.log("Texto de confirmación en la página:", confirmationText);
-  
-      console.log("Confirmación completada y validada. Cerrando navegador...");
-      await browser.close();
-  
-      return true; // Indica que todo fue exitoso
-    } catch (error) {
-      console.error("Error al confirmar la actualización:", error.message);
-      await browser.close();
-      return false; // Indica que hubo un fallo
-    }
+  console.log("Iniciando navegador para confirmar la actualización...");
+  const browser = await chromium.launch({ headless: true }); // Cambiado a Playwright
+  const page = await browser.newPage();
+
+  try {
+    await page.goto(link, { waitUntil: "networkidle" });
+    console.log("Página cargada. Verificando contenido...");
+
+    const iframe = await page.frame({ name: "iframe" }); // Detectar iframe
+    const frame = iframe || page;
+
+    console.log("Buscando botón de confirmación...");
+    const buttonSelector = 'button[data-uia="set-primary-location-action"]';
+    await frame.waitForSelector(buttonSelector, { timeout: 60000 });
+    console.log("Botón encontrado. Haciendo clic...");
+    await frame.click(buttonSelector);
+
+    console.log("Esperando mensaje de confirmación...");
+    await page.waitForSelector('div:has-text("Actualizaste tu Hogar con Netflix")', { timeout: 60000 });
+    console.log("Confirmación completada.");
+
+    await browser.close();
+  } catch (error) {
+    console.error("Error al confirmar la actualización:", error);
+    await browser.close();
   }
-  
+}
 
 async function checkAndCleanInbox(connection) {
   console.log("Verificando la cantidad de correos en la bandeja de entrada...");
@@ -193,7 +171,8 @@ async function checkAndCleanInbox(connection) {
       const uidsToDelete = messageUids.slice(0, totalMessages - 1000);
 
       if (uidsToDelete.length > 0) {
-        await connection.deleteMessages(uidsToDelete);
+        await connection.addFlags(uidsToDelete, "\\Deleted");
+        await connection.imap.expunge();
         console.log(`Se eliminaron ${uidsToDelete.length} correos antiguos.`);
       }
     } else {

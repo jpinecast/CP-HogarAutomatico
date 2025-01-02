@@ -4,7 +4,9 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+     "postinstall": "npx playwright install",
+  "start": "node index.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
     "imap-simple": "^5.1.0",
     "mailparser": "^3.7.2",
     "node-fetch": "^3.3.2",
+    "playwright": "^1.49.1",
     "puppeteer": "^23.11.1"
   }
 }
